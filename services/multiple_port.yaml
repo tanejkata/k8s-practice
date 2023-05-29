@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubia
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+    - name: https
+      port: 443
+      # we can give name in pod def and add here at target
+      targetPort: https 
+  selector:
+    app: kubia
+
+    

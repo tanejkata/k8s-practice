@@ -1,0 +1,189 @@
+## Pods ##
+
+Single Pod never be on multiple nodes
+
+$ k get po -o yaml
+$ k get po --show-labels
+$ k get po -o wide
+$ k get po -L <label-key>
+$ k get po -l <label> -- use ! for not '!env'
+$ k explain pods
+$ k describe pod <pod-name>
+$ k create -f <file.yaml>
+
+$ k logs <pod-name>
+$ k logs <pod-name> -c <specific-container>
+$ k logs <pod-name> --previous
+
+$ k port-forward <pod-name> <ext>:<container-port>
+
+$ k label po <pod-name> <label> --overwrite
+
+
+Replications
+liveness probes -> tests if container is live or not
+    1. HTTP GET (port & path)
+    2. TCP Socket
+    3. Exec prob
+* application should have a unauthenticated endpoint to get the status of our server
+* Our application should not fail if any third party software connected to out application is failed.
+
+ReplicationController
+- label selector
+- replica count
+- pod template
+$ k get rc
+
+* setting editor -> $ export KUBE_EDITOR="/usr/bin/nano"
+
+$ k scale rc kubia --replicas=10
+$ k edit rc kubia
+$ k delete rc kubia --cascade=false
+
+ReplicaSets
+- Its is similar to ReplicaController buts have better pod selectors
+- In, NotIn, Exists, DoesNotExist  -> operators for matchExpressions
+
+DeamonSet
+-> similar to ReplicaController but it will make sure it create one pod in each node
+
+Job
+- as pod will exit after the its process ended and cannnot restart so we have Job
+- after job is completed it wont delete pod (keep for us for logs)
+- multiple jobs can be run parallely or sequentially
+
+$ k scale job <job-name> --replicas 3
+it increases parallelism to 3
+* activeDeadlineSeconds -> if pod runs longer than this time, that job is considered as failure
+* backoffLimit -> job will mark as failure after retrying this backoffLimit
+
+CronJob
+to run jobs at particular interval of time 
+Minutes Hour DayofMonth Month DayOfWeek
+* startingDeadlineSeconds -> it job not start in this many seconds, it will not run and consider as failure
+
+
+Services
+Pods may come and go at any time
+random ips and may have many pods with same purpose
+
+Each service has a ip and port which never changes
+
+If we want request from same client to same pod we can add
+* sessionAffinity: ClientIP
+
+- we can create service with multiple ports open but we need to give name for each port
+
+- Kubernetes configure each pod to use the internal dns system
+* curl works to the service but ping doesnot works because the curl uses the ip and port of the service to connect,
+but services uses the virtual ip which ping not able to connect
+- We can create endpoint separately but we need to name the service and endpoint same.
+
+* Setting the service type to NodePort, will expose the service to external clients
+* Setting the service type to LoadBalancer, is a special type of NodePort Service with the ability to balance Load
+* We have Ingress resource which exposes multiple services through a single IP address.(operate at http level)
+
+- Service of type NodePort will open the port at all the nodes in cluster
+* the external traffix can be redirect to pods running on the node that received the connection based on the following flag
+spec:
+    externalTrafficPolicy: Local
+- if no pod is running in the local node , the request will be hangging
+
+
+Ingress
+If we have multiple services of type loadbalancer, each consume a public IP.
+so if we add Ingress here it will determine which service the request should be send , so we need only one public IP
+- ingress works at application layer can provide features such as cookie based session affinity
+- to make ingress resource we need Ingress controller needs to be running in the cluster
+
+Readiness probes
+- Detemines if pod is ready to accept requests or not.
+- Types of readiness probes
+    - Exec
+    - HTTP GET
+    - TCP Socket
+- always add readiness probe ad the services  may take time to setup
+
+HeadlessService
+Kubernetes allows lcients to discover pod IP through DNS lookups.
+Usually It will return ClusterIP but if we set the ClusterIP to None.
+It will return Pod IP
+- we can perform dns loopup from inside a pod so we created pod with tutum/dnsutils image
+- 
+
+* if we want to add ip of all pods irrespective of its state.
+add following line in the service
+annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoint: "true"
+
+TroubleShooting Tips
+- Connect to service using cluster IP from within the cluster
+- dont bother ping, (service cluster ip is virtual ip and ping wont works)
+- check the readiness probes on pods
+- check endpoints -- k get endpoints
+- try access using cluster IP instead of FQDN
+- check if we connected to the service port not the target port
+- 
+
+
+Volumes
+- emptyDir : A simple empty directory (storing transien data)
+    - used to shared data between containers
+    - when a container want to save temporary data to disk
+- hostPath : used to monitoring directories from the worker nodes filesystem
+- gitRepo : Volume initialized by checking out the contents of git repository
+- nfs : NFS share mounted into the pod
+- gcePersistentDisk : cloud provider specific storage
+- configMap, secret, downwardAPI - special types of volunes used to expose certain resources
+- persistentVolumeClaim - A way to use pre or dynamicallly provisioned persistent storage
+
+emptyDir:
+- it created volume on actual disk of the worker node.
+- we can tell kubernetes to create on tmpfs filesystem(in memory)
+    medium: Memory
+
+gitRepo:
+- it is a volume created by cloning a git repository. but it wont get auto updates when ever we push code to repository
+  we need to delete the pod and create a new one
+- used to store html files locally so that when ever a new pod is created it fetched html files 
+- we cannot use gitRepo with private repository
+
+hostPath:
+- if pods wants to access node's file system we can do this using hostPath Volumes
+- hostPath points to the specific file or directory on the node's filesystem
+- it is a type of persistent volume as the files are saved on nodes filesystem , it pod get deleted the data can be seen by next pod
+- but if the pod get reschedule on a another node it cannot see the data
+
+- To deal with the infrastructure specifics, we have persistentVolumes and persistentVolumeClaims
+
+- cluster admin sets up some type of storage and created a persistentVolumes 
+- user creates a persistentVolumeClaims and created volumes using persistentVolumeClaim
+
+RWO
+ROX
+RWX
+
+- once pvc get deleted and created again then pv will be in released state means cannot be connect unless admin cleans it
+depends on persistentVolumeReclainPolicy
+    - Retain    - wont delete and won't assign 
+    - Recycle   - cleans data and available again
+    - Delete    - deletes the underlying storage
+
+pv are not namespaced
+
+* still this need admin to created the pv , kubenetes can automate this using storageClass
+* though storage class need to be created by admin, but they don't need to keep on monitoring and main them.
+
+* user while creating pvc they refer to a storage class and it will dynamically provisioned persistentVolume with reclaim policy set to Delete.
+
+system admin need to create multiple storage classes with different performance and specifications. and developer need to decices which one is most appropriate.
+
+configMap & secret
+- setting configMapKeyRef.optional: true starts the pod even if the config map used in pod definition not exists
+we can create a complete nginx config in configMap
+once the pod is started the changes made to configMap will not reflect except configmap which are injected using volumes
+
+to store sensitive information we use secret resource
+the values in secret are stored in base64 encoding
+- to add string in secret we use stringData which is write only, we cannot able to see in in describe page
+

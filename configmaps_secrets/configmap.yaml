@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fortune-args-from-confingmap
+  labels:
+    name: fortune-args-from-confingmap
+spec:
+  containers:
+  - name: fortune-args-from-confingmap
+    image: luksa/fortune:args
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "500m"
+    env:
+      - name: INTERVAL
+        valueFrom:
+          configMapKeyRef:
+            key: sleep-interval
+            name: fortune-config
+    args: ["$(INTERVAL)"] # referencing the above env
+    volumeMounts:
+      - mountPath: /etc/nginc/conf.d
+        name: config
+        readOnly: true
+  volumes:
+    - name: config # creating volume from the configmap and injecting above
+      configMap:
+        name: fortune-config
+    - name: config_2
+      items:
+        - key: my-nginx-config.conf
+          path: gzip.conf
